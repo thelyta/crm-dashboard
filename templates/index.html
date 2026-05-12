@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrimeServ CRM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">PrimeServ</div>
+                <div class="logo-sub">CRM</div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-label">Pipelines</div>
+                    <div id="pipelineList" class="pipeline-list"></div>
+                    <button class="btn-add-pipeline" onclick="openPipelineModal()">
+                        <span>+</span> New Pipeline
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-label">Views</div>
+                    <button class="nav-item active" onclick="showSection('dashboard')" id="navDashboard">
+                        <span class="icon">📊</span> Dashboard
+                    </button>
+                    <button class="nav-item" onclick="showSection('pipeline-view')" id="navPipelineView">
+                        <span class="icon">📋</span> Pipeline View
+                    </button>
+                    <button class="nav-item" onclick="showSection('table-view')" id="navTableView">
+                        <span class="icon">📑</span> Table View
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-label">Tools</div>
+                    <button class="nav-item" onclick="openImportModal()">
+                        <span class="icon">📥</span> Import CSV
+                    </button>
+                    <button class="nav-item" onclick="showSection('settings')" id="navSettings">
+                        <span class="icon">⚙️</span> Settings
+                    </button>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span id="currentUser">User</span>
+                    <a href="/logout" class="logout-link">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+                <h1 id="pageTitle">Dashboard</h1>
+                <div class="top-actions">
+                    <button class="btn btn-primary" onclick="openProspectModal()">
+                        <span>+</span> Add Prospect
+                    </button>
+                </div>
+            </header>
+
+            <!-- Stats Bar -->
+            <div class="stats-bar" id="statsBar">
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotal">0</div>
+                    <div class="stat-label">Total Prospects</div>
+                </div>
+                <div class="stat-card stat-overdue">
+                    <div class="stat-value" id="statOverdue">0</div>
+                    <div class="stat-label">Follow-Up Needed</div>
+                </div>
+                <div class="stat-card stat-due-soon">
+                    <div class="stat-value" id="statDueSoon">0</div>
+                    <div class="stat-label">Due Soon</div>
+                </div>
+                <div class="stat-card stat-on-track">
+                    <div class="stat-value" id="statOnTrack">0</div>
+                    <div class="stat-label">On Track</div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-bar" id="filtersBar">
+                <div class="filter-group">
+                    <input type="text" id="searchInput" placeholder="Search prospects..." oninput="loadProspects()">
+                </div>
+                <div class="filter-group">
+                    <select id="statusFilter" onchange="loadProspects()">
+                        <option value="">All Statuses</option>
+                        <option value="New Lead">New Lead</option>
+                        <option value="Sent">Sent</option>
+                        <option value="Sent 1">Sent 1</option>
+                        <option value="Sent 2">Sent 2</option>
+                        <option value="Sent 3">Sent 3</option>
+                        <option value="Sent 4+">Sent 4+</option>
+                        <option value="Responded">Responded</option>
+                        <option value="Meeting">Meeting</option>
+                        <option value="Proposal">Proposal</option>
+                        <option value="Closed-Won">Closed-Won</option>
+                        <option value="Closed-Lost">Closed-Lost</option>
+                        <option value="Nurture">Nurture</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <select id="tagFilter" onchange="loadProspects()">
+                        <option value="">All Tags</option>
+                        <option value="hot">Hot</option>
+                        <option value="warm">Warm</option>
+                        <option value="cold">Cold</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <select id="monthFilter" onchange="loadProspects()">
+                        <option value="">All Months</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <select id="yearFilter" onchange="loadProspects()">
+                        <option value="">All Years</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+            </div>
+
+            <!-- Content Sections -->
+            <div class="content-area">
+                <!-- Dashboard Section -->
+                <section id="dashboard" class="section active">
+                    <div class="dashboard-grid">
+                        <div class="dashboard-card">
+                            <h3>Recent Activity</h3>
+                            <div id="recentActivity" class="activity-list"></div>
+                        </div>
+                        <div class="dashboard-card">
+                            <h3>Pipeline Overview</h3>
+                            <div id="pipelineOverview" class="pipeline-overview"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Pipeline View (Kanban) -->
+                <section id="pipeline-view" class="section">
+                    <div class="kanban-container" id="kanbanContainer"></div>
+                </section>
+
+                <!-- Table View -->
+                <section id="table-view" class="section">
+                    <div class="table-container">
+                        <table class="data-table" id="prospectsTable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Company</th>
+                                    <th>Status</th>
+                                    <th>Tags</th>
+                                    <th>Last Contact</th>
+                                    <th>Follow-Up</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section id="settings" class="section">
+                    <div class="settings-container">
+                        <div class="settings-tabs">
+                            <button class="settings-tab active" onclick="showSettingsTab('sequences')" id="tabSequences">Sequences</button>
+                            <button class="settings-tab" onclick="showSettingsTab('users')" id="tabUsers">Users</button>
+                            <button class="settings-tab" onclick="showSettingsTab('activity')" id="tabActivity">Activity Log</button>
+                        </div>
+
+                        <div class="settings-content">
+                            <div id="settings-sequences" class="settings-panel active">
+                                <div class="panel-header">
+                                    <h3>Follow-Up Sequences</h3>
+                                    <button class="btn btn-primary" onclick="createNewSequence()">+ New Sequence</button>
+                                </div>
+                                <div id="sequencesList" class="sequences-list"></div>
+                            </div>
+
+                            <div id="settings-users" class="settings-panel">
+                                <div class="panel-header">
+                                    <h3>User Management</h3>
+                                    <button class="btn btn-primary" onclick="openUserModal()">+ Add User</button>
+                                </div>
+                                <div id="usersList" class="users-list"></div>
+                            </div>
+
+                            <div id="settings-activity" class="settings-panel">
+                                <div class="panel-header">
+                                    <h3>Activity Log</h3>
+                                </div>
+                                <div id="activityLogList" class="activity-list-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Prospect Modal -->
+    <div class="modal-overlay" id="prospectModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="prospectModalTitle">Add Prospect</h3>
+                <button class="modal-close" onclick="closeModal('prospectModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="prospectForm">
+                    <input type="hidden" id="prospectId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>First Name *</label>
+                            <input type="text" id="prospectFirstName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Last Name</label>
+                            <input type="text" id="prospectLastName">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="prospectEmail">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" id="prospectPhone">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>LinkedIn URL</label>
+                            <input type="url" id="prospectLinkedIn">
+                        </div>
+                        <div class="form-group">
+                            <label>Company</label>
+                            <input type="text" id="prospectCompany">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Pipeline *</label>
+                            <select id="prospectPipeline" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sequence</label>
+                            <select id="prospectSequence"></select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select id="prospectStatus">
+                                <option value="New Lead">New Lead</option>
+                                <option value="Sent">Sent</option>
+                                <option value="Sent 1">Sent 1</option>
+                                <option value="Sent 2">Sent 2</option>
+                                <option value="Sent 3">Sent 3</option>
+                                <option value="Sent 4+">Sent 4+</option>
+                                <option value="Responded">Responded</option>
+                                <option value="Meeting">Meeting</option>
+                                <option value="Proposal">Proposal</option>
+                                <option value="Closed-Won">Closed-Won</option>
+                                <option value="Closed-Lost">Closed-Lost</option>
+                                <option value="Nurture">Nurture</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Tags</label>
+                            <div class="tag-input-container" id="tagInputContainer">
+                                <div class="tags-display" id="tagsDisplay"></div>
+                                <input type="text" id="tagInput" placeholder="Type tag & press Enter">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea id="prospectNotes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('prospectModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveProspect()">Save Prospect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline Modal -->
+    <div class="modal-overlay" id="pipelineModal">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h3>New Pipeline</h3>
+                <button class="modal-close" onclick="closeModal('pipelineModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="pipelineForm">
+                    <div class="form-group">
+                        <label>Pipeline Name *</label>
+                        <input type="text" id="pipelineName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="pipelineDescription" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('pipelineModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createPipeline()">Create Pipeline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Import Prospects from CSV</h3>
+                <button class="modal-close" onclick="closeModal('importModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-dropzone" id="importDropzone">
+                    <div class="import-icon">📁</div>
+                    <p>Drag & drop CSV file here or click to browse</p>
+                    <input type="file" id="csvFileInput" accept=".csv" style="display:none">
+                </div>
+                <div class="form-group">
+                    <label>Target Pipeline</label>
+                    <select id="importPipeline"></select>
+                </div>
+                <div class="form-group">
+                    <label>Sequence (Optional)</label>
+                    <select id="importSequence"></select>
+                </div>
+                <div class="import-preview" id="importPreview"></div>
+                <div class="import-hint">
+                    <strong>Expected columns:</strong> First Name, Last Name, Email, LinkedIn, Phone, Company, Tags
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('importModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="importCSV()" id="importBtn" disabled>Import Prospects</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sequence Modal -->
+    <div class="modal-overlay" id="sequenceModal">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3 id="sequenceModalTitle">Edit Sequence</h3>
+                <button class="modal-close" onclick="closeModal('sequenceModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="sequenceForm">
+                    <input type="hidden" id="sequenceId">
+                    <div class="form-group">
+                        <label>Sequence Name</label>
+                        <input type="text" id="sequenceName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Pipeline</label>
+                        <select id="sequencePipeline"></select>
+                    </div>
+                    <div class="sequence-steps" id="sequenceSteps">
+                        <div class="steps-header">
+                            <span>Step</span>
+                            <span>Days to Wait</span>
+                            <span>Status Name</span>
+                            <span>Label</span>
+                            <span></span>
+                        </div>
+                        <div id="stepsList"></div>
+                        <button type="button" class="btn btn-secondary" onclick="addSequenceStep()">+ Add Step</button>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('sequenceModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSequence()">Save Sequence</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Modal -->
+    <div class="modal-overlay" id="userModal">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h3>Add User</h3>
+                <button class="modal-close" onclick="closeModal('userModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="userForm">
+                    <div class="form-group">
+                        <label>Username *</label>
+                        <input type="text" id="userUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password *</label>
+                        <input type="password" id="userPassword" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="userRole">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createUser()">Create User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Contact Modal -->
+    <div class="modal-overlay" id="contactModal">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h3>Log Contact</h3>
+                <button class="modal-close" onclick="closeModal('contactModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="contactForm">
+                    <input type="hidden" id="contactProspectId">
+                    <div class="form-group">
+                        <label>Contact Notes</label>
+                        <textarea id="contactNotes" rows="4" placeholder="What happened in this contact?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('contactModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="logContact()">Log Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prospect Details Modal -->
+    <div class="modal-overlay" id="detailsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="detailsName">Prospect Details</h3>
+                <button class="modal-close" onclick="closeModal('detailsModal')">&times;</button>
+            </div>
+            <div class="modal-body" id="detailsBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('detailsModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
