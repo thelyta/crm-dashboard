@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PrimeServ CRM</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<base target="_blank">
 </head>
 <body>
     <div class="app-container">
@@ -171,6 +172,7 @@
                         <table class="data-table" id="prospectsTable">
                             <thead>
                                 <tr>
+                                    <th><input type="checkbox" onclick="toggleSelectAll()"></th>
                                     <th>Name</th>
                                     <th>Email</th>
                                     <th>Company</th>
@@ -303,6 +305,19 @@
                             </div>
                         </div>
                     </div>
+                    <!-- NEW: Last Contact Date Field -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Last Contact Date</label>
+                            <input type="date" id="prospectLastContactDate">
+                            <small style="color:#888;font-size:12px;">When did you last contact this prospect?</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Next Follow-Up</label>
+                            <input type="date" id="prospectNextFollowup" disabled>
+                            <small style="color:#888;font-size:12px;">Auto-calculated from sequence</small>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label>Notes</label>
                         <textarea id="prospectNotes" rows="3"></textarea>
@@ -366,6 +381,14 @@
                 <div class="import-preview" id="importPreview"></div>
                 <div class="import-hint">
                     <strong>Expected columns:</strong> First Name, Last Name, Email, LinkedIn, Phone, Company, Tags
+                    <br><br>
+                    <strong style="color:#059669;">✨ NEW: Auto-detects Status and Date Sent columns</strong>
+                    <br>
+                    <span style="color:#666;font-size:12px;">
+                        • <strong>Status</strong> column → Maps to CRM Status field<br>
+                        • <strong>Date Sent / Last Contact</strong> column → Maps to Last Contact Date<br>
+                        Supports formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, Month DD, YYYY
+                    </span>
                 </div>
             </div>
             <div class="modal-footer">
@@ -459,6 +482,12 @@
                     <div class="form-group">
                         <label>Contact Notes</label>
                         <textarea id="contactNotes" rows="4" placeholder="What happened in this contact?"></textarea>
+                    </div>
+                    <div style="background:#f0f9ff;padding:12px;border-radius:8px;margin-top:12px;">
+                        <strong style="color:#0369a1;font-size:13px;">💡 Tip:</strong>
+                        <p style="color:#666;font-size:12px;margin-top:4px;">
+                            Logging contact will automatically update the Last Contact Date to today and recalculate the next follow-up based on the assigned sequence.
+                        </p>
                     </div>
                 </form>
             </div>

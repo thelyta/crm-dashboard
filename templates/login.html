@@ -92,13 +92,14 @@
             font-family: monospace;
         }
     </style>
+<base target="_blank">
 </head>
 <body>
     <div class="login-container">
         <div class="logo">PrimeServ CRM</div>
         <div class="subtitle">Client Acquisition System for Realtors</div>
 
-        <form id="loginForm">
+        <form id="loginForm" method="POST" action="/login">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" placeholder="Enter username" required autofocus>
@@ -117,6 +118,7 @@
     </div>
 
     <script>
+        // Handle JSON login for SPA mode, fallback to form submit
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const username = document.getElementById('username').value.trim();
@@ -139,8 +141,8 @@
                     errorMsg.classList.add('show');
                 }
             } catch (err) {
-                errorMsg.textContent = 'Connection error. Please try again.';
-                errorMsg.classList.add('show');
+                // Fallback to regular form submission
+                this.submit();
             }
         });
     </script>

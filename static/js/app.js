@@ -10,6 +10,7 @@ let editingSequenceId = null;
 let tempTags = [];
 let tempSequenceSteps = [];
 let csvFile = null;
+let selectedProspects = new Set();
 
 // ─── API HELPER ───
 async function api(url, options = {}) {
@@ -268,7 +269,7 @@ function renderPipeline() {
 }
 
 function renderProspectCard(prospect) {
-    const tagsHtml = prospect.tags.map(t => 
+    const tagsHtml = (prospect.tags || []).map(t => 
         `<span class="tag tag-${t.toLowerCase()}">${escapeHtml(t)}</span>`
     ).join('');
 
@@ -276,13 +277,37 @@ function renderProspectCard(prospect) {
     const followupLabel = followupClass === 'overdue' ? 'Overdue' : 
                           followupClass === 'due-soon' ? 'Due Soon' : 'On Track';
 
+    // Show sequence progress if applicable
+    let sequenceBadge = '';
+    if (prospect.sequence_id && sequences.length > 0) {
+        const seq = sequences.find(s => s.id === prospect.sequence_id);
+        if (seq && seq.steps) {
+            const stepNum = (prospect.sequence_step_index || 0) + 1;
+            const totalSteps = seq.steps.length;
+            sequenceBadge = `<span class="sequence-badge">Step ${stepNum}/${totalSteps}</span>`;
+        }
+    }
+
+    // Show last contact date
+    let lastContactInfo = '';
+    if (prospect.last_contact_date) {
+        const date = new Date(prospect.last_contact_date);
+        const daysAgo = Math.floor((new Date() - date) / (1000 * 60 * 60 * 24));
+        lastContactInfo = `<div class="last-contact">Last contact: ${daysAgo === 0 ? 'Today' : daysAgo + ' days ago'}</div>`;
+    }
+
     return `
         <div class="prospect-card ${followupClass}" onclick="showProspectDetails(${prospect.id})">
             <div class="name">${escapeHtml(prospect.first_name)} ${escapeHtml(prospect.last_name || '')}</div>
             <div class="company">${escapeHtml(prospect.company || 'No company')}</div>
+            ${lastContactInfo}
             <div class="meta">
                 <div class="tags">${tagsHtml}</div>
+                ${sequenceBadge}
+            </div>
+            <div class="card-actions">
                 <span class="followup-badge ${followupClass}">${followupLabel}</span>
+                ${prospect.sequence_id ? `<button class="btn-advance" onclick="event.stopPropagation(); advanceSequence(${prospect.id})" title="Advance to next step">⏭️</button>` : ''}
             </div>
         </div>
     `;
@@ -296,7 +321,7 @@ function renderTable() {
     if (prospects.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="empty-state">
+                <td colspan="9" class="empty-state">
                     <div class="icon">📭</div>
                     <h3>No prospects found</h3>
                     <p>Add prospects or adjust your filters</p>
@@ -307,7 +332,7 @@ function renderTable() {
     }
 
     tbody.innerHTML = prospects.map(p => {
-        const tagsHtml = p.tags.map(t => 
+        const tagsHtml = (p.tags || []).map(t => 
             `<span class="tag tag-${t.toLowerCase()}">${escapeHtml(t)}</span>`
         ).join('');
 
@@ -318,13 +343,25 @@ function renderTable() {
         const lastContact = p.last_contact_date ? 
             new Date(p.last_contact_date).toLocaleDateString() : 'Never';
 
+        // Sequence info
+        let seqInfo = '-';
+        if (p.sequence_id && sequences.length > 0) {
+            const seq = sequences.find(s => s.id === p.sequence_id);
+            if (seq) {
+                seqInfo = `${escapeHtml(seq.name)} (${(p.sequence_step_index || 0) + 1}/${seq.steps?.length || '?'})`;
+            }
+        }
+
+        const isSelected = selectedProspects.has(p.id);
+
         return `
-            <tr>
+            <tr class="${isSelected ? 'selected' : ''}">
+                <td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelectProspect(${p.id})" onclick="event.stopPropagation()"></td>
                 <td class="name-cell">${escapeHtml(p.first_name)} ${escapeHtml(p.last_name || '')}</td>
                 <td class="email-cell">${escapeHtml(p.email || '-')}</td>
                 <td>${escapeHtml(p.company || '-')}</td>
                 <td>
-                    <select class="status-select" onchange="quickUpdateStatus(${p.id}, this.value)">
+                    <select class="status-select" onchange="quickUpdateStatus(${p.id}, this.value)" onclick="event.stopPropagation()">
                         ${getStatusOptions(p.status)}
                     </select>
                 </td>
@@ -334,6 +371,7 @@ function renderTable() {
                 <td class="actions">
                     <button class="btn-edit" onclick="event.stopPropagation(); editProspect(${p.id})">Edit</button>
                     <button class="btn-log" onclick="event.stopPropagation(); openContactModal(${p.id})">Log</button>
+                    ${p.sequence_id ? `<button class="btn-advance" onclick="event.stopPropagation(); advanceSequence(${p.id})" title="Next Step">⏭️</button>` : ''}
                     <button class="btn-delete" onclick="event.stopPropagation(); deleteProspect(${p.id})">Del</button>
                 </td>
             </tr>
@@ -347,6 +385,151 @@ function getStatusOptions(currentStatus) {
     return statuses.map(s => 
         `<option value="${s}" ${s === currentStatus ? 'selected' : ''}>${s}</option>`
     ).join('');
+}
+
+// ─── SELECTION & BULK ACTIONS ───
+function toggleSelectProspect(id) {
+    if (selectedProspects.has(id)) {
+        selectedProspects.delete(id);
+    } else {
+        selectedProspects.add(id);
+    }
+    renderTable();
+    updateBulkActionsBar();
+}
+
+function toggleSelectAll() {
+    const allSelected = selectedProspects.size === prospects.length;
+    if (allSelected) {
+        selectedProspects.clear();
+    } else {
+        prospects.forEach(p => selectedProspects.add(p.id));
+    }
+    renderTable();
+    updateBulkActionsBar();
+}
+
+function updateBulkActionsBar() {
+    let bar = document.getElementById('bulkActionsBar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'bulkActionsBar';
+        bar.className = 'bulk-actions-bar';
+        document.querySelector('.table-container').insertBefore(bar, document.querySelector('.table-container').firstChild);
+    }
+
+    if (selectedProspects.size === 0) {
+        bar.style.display = 'none';
+        return;
+    }
+
+    bar.style.display = 'flex';
+    bar.innerHTML = `
+        <span class="bulk-count">${selectedProspects.size} selected</span>
+        <div class="bulk-buttons">
+            <button class="btn btn-sm btn-secondary" onclick="bulkAdvanceSequence()">⏭️ Advance Sequence</button>
+            <button class="btn btn-sm btn-secondary" onclick="bulkUpdateStatus()">📝 Update Status</button>
+            <button class="btn btn-sm btn-danger" onclick="bulkDelete()">🗑️ Delete</button>
+            <button class="btn btn-sm btn-secondary" onclick="selectedProspects.clear(); renderTable(); updateBulkActionsBar();">Clear</button>
+        </div>
+    `;
+}
+
+async function bulkAdvanceSequence() {
+    if (selectedProspects.size === 0) return;
+    if (!confirm(`Advance ${selectedProspects.size} prospects to next sequence step?`)) return;
+
+    try {
+        const result = await api('/api/bulk/advance-sequence', {
+            method: 'POST',
+            body: JSON.stringify({ prospect_ids: Array.from(selectedProspects) })
+        });
+
+        alert(`Advanced ${result.advanced} prospects.${result.errors.length > 0 ? '\nErrors: ' + result.errors.join('\n') : ''}`);
+        selectedProspects.clear();
+        loadProspects();
+        updateBulkActionsBar();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function bulkUpdateStatus() {
+    if (selectedProspects.size === 0) return;
+
+    const newStatus = prompt('Enter new status for selected prospects:');
+    if (!newStatus) return;
+
+    try {
+        const result = await api('/api/bulk/update-status', {
+            method: 'POST',
+            body: JSON.stringify({ 
+                prospect_ids: Array.from(selectedProspects),
+                status: newStatus
+            })
+        });
+
+        alert(`Updated ${result.updated} prospects`);
+        selectedProspects.clear();
+        loadProspects();
+        updateBulkActionsBar();
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function bulkDelete() {
+    if (selectedProspects.size === 0) return;
+    if (!confirm(`Delete ${selectedProspects.size} prospects? This cannot be undone.`)) return;
+
+    let deleted = 0;
+    for (const id of selectedProspects) {
+        try {
+            await api(`/api/prospects/${id}`, { method: 'DELETE' });
+            deleted++;
+        } catch (e) {
+            console.error('Error deleting prospect:', e);
+        }
+    }
+
+    alert(`Deleted ${deleted} prospects`);
+    selectedProspects.clear();
+    loadProspects();
+    updateBulkActionsBar();
+}
+
+// ─── ADVANCE SEQUENCE ───
+async function advanceSequence(prospectId) {
+    try {
+        const result = await api(`/api/prospects/${prospectId}/advance-sequence`, {
+            method: 'POST'
+        });
+
+        if (result.success) {
+            // Show success notification
+            showNotification(`Advanced to: ${result.step_label}`, 'success');
+            loadProspects();
+            renderPipelineList();
+        }
+    } catch (err) {
+        alert('Error advancing sequence: ' + err.message);
+    }
+}
+
+function showNotification(message, type = 'info') {
+    const notif = document.createElement('div');
+    notif.className = `notification notification-${type}`;
+    notif.textContent = message;
+    document.body.appendChild(notif);
+
+    setTimeout(() => {
+        notif.classList.add('show');
+    }, 10);
+
+    setTimeout(() => {
+        notif.classList.remove('show');
+        setTimeout(() => notif.remove(), 300);
+    }, 3000);
 }
 
 // ─── PROSPECT MODAL ───
@@ -443,6 +626,12 @@ async function saveProspect() {
         return;
     }
 
+    // NEW: Handle last contact date
+    const lastContactDate = document.getElementById('prospectLastContactDate')?.value;
+    if (lastContactDate) {
+        data.last_contact_date = new Date(lastContactDate).toISOString();
+    }
+
     try {
         if (editingProspectId) {
             await api(`/api/prospects/${editingProspectId}`, {
@@ -479,6 +668,15 @@ async function editProspect(id) {
     document.getElementById('prospectCompany').value = prospect.company || '';
     document.getElementById('prospectStatus').value = prospect.status || 'New Lead';
     document.getElementById('prospectNotes').value = prospect.notes || '';
+
+    // NEW: Set last contact date
+    const lastContactInput = document.getElementById('prospectLastContactDate');
+    if (lastContactInput && prospect.last_contact_date) {
+        const date = new Date(prospect.last_contact_date);
+        lastContactInput.value = date.toISOString().split('T')[0];
+    } else if (lastContactInput) {
+        lastContactInput.value = '';
+    }
 
     populatePipelineSelects();
     document.getElementById('prospectPipeline').value = prospect.pipeline_id;
@@ -529,6 +727,7 @@ async function logContact() {
         });
         closeModal('contactModal');
         loadProspects();
+        showNotification('Contact logged successfully', 'success');
     } catch (err) {
         alert('Error logging contact: ' + err.message);
     }
@@ -540,7 +739,7 @@ function showProspectDetails(id) {
     if (!prospect) return;
 
     const pipeline = pipelines.find(p => p.id === prospect.pipeline_id);
-    const tagsHtml = prospect.tags.map(t => 
+    const tagsHtml = (prospect.tags || []).map(t => 
         `<span class="tag tag-${t.toLowerCase()}">${escapeHtml(t)}</span>`
     ).join('');
 
@@ -548,6 +747,29 @@ function showProspectDetails(id) {
         new Date(prospect.last_contact_date).toLocaleString() : 'Never';
     const created = prospect.created_at ? 
         new Date(prospect.created_at).toLocaleString() : 'Unknown';
+
+    // Sequence info
+    let sequenceInfo = 'None';
+    if (prospect.sequence_id && sequences.length > 0) {
+        const seq = sequences.find(s => s.id === prospect.sequence_id);
+        if (seq && seq.steps) {
+            const currentStep = seq.steps[prospect.sequence_step_index || 0];
+            const nextStep = seq.steps[prospect.sequence_step_index + 1];
+            sequenceInfo = `
+                <strong>${escapeHtml(seq.name)}</strong><br>
+                Current: Step ${(prospect.sequence_step_index || 0) + 1} - ${escapeHtml(currentStep?.label || 'Unknown')}<br>
+                ${nextStep ? `Next: Step ${(prospect.sequence_step_index || 0) + 2} - ${escapeHtml(nextStep.label)} (Day ${nextStep.days})` : '<em>Final step</em>'}
+            `;
+        }
+    }
+
+    // Next follow-up info
+    let nextFollowupInfo = 'Not scheduled';
+    if (prospect.next_followup) {
+        const date = new Date(prospect.next_followup);
+        const daysUntil = Math.floor((date - new Date()) / (1000 * 60 * 60 * 24));
+        nextFollowupInfo = `${date.toLocaleString()} (${daysUntil < 0 ? 'Overdue ' + Math.abs(daysUntil) + ' days' : daysUntil + ' days'})`;
+    }
 
     document.getElementById('detailsName').textContent = 
         `${escapeHtml(prospect.first_name)} ${escapeHtml(prospect.last_name || '')}`;
@@ -586,6 +808,18 @@ function showProspectDetails(id) {
                 <span class="detail-label">Created</span>
                 <span class="detail-value">${created}</span>
             </div>
+            <div class="detail-item">
+                <span class="detail-label">Last Contact</span>
+                <span class="detail-value">${lastContact}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Next Follow-Up</span>
+                <span class="detail-value">${nextFollowupInfo}</span>
+            </div>
+            <div class="detail-item" style="grid-column: 1 / -1;">
+                <span class="detail-label">Sequence Progress</span>
+                <span class="detail-value">${sequenceInfo}</span>
+            </div>
         </div>
         ${prospect.notes ? `
             <div class="details-notes">
@@ -617,7 +851,7 @@ async function loadActivityForProspect(prospectId) {
             <div class="activity-item">
                 <span class="time">${new Date(log.created_at).toLocaleString()}</span>
                 <div>
-                    <span class="action">${escapeHtml(log.action)}</span>
+                    <span class="action-badge ${log.action}">${log.action.replace('_', ' ')}</span>
                     ${log.username ? `<span class="user">by ${escapeHtml(log.username)}</span>` : ''}
                     ${log.details ? `<div style="color:#666;font-size:12px;margin-top:2px;">${escapeHtml(log.details)}</div>` : ''}
                 </div>
@@ -692,7 +926,7 @@ function renderSequencesSettings() {
 
     container.innerHTML = sequences.map(s => {
         const pipeline = pipelines.find(p => p.id === s.pipeline_id);
-        const stepsPreview = s.steps.map((step, i) => 
+        const stepsPreview = (s.steps || []).map((step, i) => 
             `<span class="step-chip">Day ${step.days}: ${escapeHtml(step.label)}</span>`
         ).join('');
 
@@ -720,11 +954,12 @@ function createNewSequence() {
     document.getElementById('sequenceId').value = '';
     tempSequenceSteps = [
         { days: 0, status: 'New Lead', label: 'Initial Contact' },
-        { days: 3, status: 'Sent', label: 'Follow Up 1' },
-        { days: 7, status: 'Sent 1', label: 'Follow Up 2' },
-        { days: 7, status: 'Sent 2', label: 'Follow Up 3' },
-        { days: 14, status: 'Sent 3', label: 'Follow Up 4' },
-        { days: 30, status: 'Nurture', label: 'Nurture' }
+        { days: 1, status: 'Sent', label: 'Day 1: First Message' },
+        { days: 3, status: 'Sent 1', label: 'Day 3: Follow Up 1' },
+        { days: 7, status: 'Sent 2', label: 'Day 7: Follow Up 2' },
+        { days: 14, status: 'Sent 3', label: 'Day 14: Follow Up 3' },
+        { days: 30, status: 'Sent 4+', label: 'Day 30: Final Follow Up' },
+        { days: 45, status: 'Nurture', label: 'Day 45: Nurture/Re-engage' }
     ];
     populatePipelineSelects();
     renderSequenceSteps();
@@ -974,11 +1209,21 @@ function handleFile(file) {
         const lines = text.split('\n').slice(0, 6);
         const preview = document.getElementById('importPreview');
 
+        // Parse headers to show mapping
+        const headers = lines[0]?.split(',').map(h => h.trim()) || [];
+        const mappingInfo = analyzeCSVMapping(headers);
+
         preview.innerHTML = `
             <div style="background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:8px;">
                 <strong>File:</strong> ${escapeHtml(file.name)}<br>
                 <strong>Size:</strong> ${(file.size / 1024).toFixed(1)} KB<br>
-                <strong>Preview (first 5 rows):</strong>
+                <strong>Detected Columns:</strong>
+                <ul style="margin:8px 0 0 20px;font-size:12px;">
+                    ${mappingInfo.map(m => `<li>${escapeHtml(m.header)} → <strong>${m.mapsTo}</strong></li>`).join('')}
+                </ul>
+            </div>
+            <div style="background:#d1fae5;padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:12px;">
+                <strong>✅ Enhanced Import:</strong> Status and Date Sent columns will be automatically mapped to CRM fields.
             </div>
             <pre style="background:#1a1a2e;color:#fff;padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;">${escapeHtml(lines.join('\n'))}</pre>
         `;
@@ -986,6 +1231,54 @@ function handleFile(file) {
         document.getElementById('importBtn').disabled = false;
     };
     reader.readAsText(file);
+}
+
+function analyzeCSVMapping(headers) {
+    const mappings = [];
+    const lowerHeaders = headers.map(h => h.toLowerCase());
+
+    const knownMappings = {
+        'first name': 'First Name',
+        'first_name': 'First Name',
+        'lastname': 'Last Name',
+        'last name': 'Last Name',
+        'last_name': 'Last Name',
+        'name': 'Full Name',
+        'email': 'Email',
+        'e-mail': 'Email',
+        'phone': 'Phone',
+        'telephone': 'Phone',
+        'company': 'Company',
+        'organization': 'Company',
+        'linkedin': 'LinkedIn URL',
+        'linkedin url': 'LinkedIn URL',
+        'linkedin_url': 'LinkedIn URL',
+        'status': 'Status (NEW - Auto-mapped)',
+        'stage': 'Status (NEW - Auto-mapped)',
+        'date sent': 'Last Contact Date (NEW - Auto-mapped)',
+        'date_sent': 'Last Contact Date (NEW - Auto-mapped)',
+        'sent date': 'Last Contact Date (NEW - Auto-mapped)',
+        'last contact': 'Last Contact Date (NEW - Auto-mapped)',
+        'last_contact': 'Last Contact Date (NEW - Auto-mapped)',
+        'tags': 'Tags',
+        'tag': 'Tags'
+    };
+
+    headers.forEach((header, i) => {
+        const lower = lowerHeaders[i];
+        let mapsTo = 'Custom Field';
+
+        for (const [key, value] of Object.entries(knownMappings)) {
+            if (lower.includes(key) || key.includes(lower)) {
+                mapsTo = value;
+                break;
+            }
+        }
+
+        mappings.push({ header, mapsTo });
+    });
+
+    return mappings;
 }
 
 function handleFileSelect(e) {
@@ -1113,7 +1406,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         const response = await fetch('/api/users');
         if (response.ok) {
             const users = await response.json();
-            // We don't have current user endpoint, but we can show we're logged in
             document.getElementById('currentUser').textContent = 'Logged In';
         }
     } catch (e) {
